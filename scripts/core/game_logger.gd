@@ -71,9 +71,6 @@ func _dump_state() -> void:
 		if tree.current_scene != null \
 		else '<none>'
 
-	if Engine.has_singleton('StateMgr'):
-		dump['game_state'] = StateMgr.get_active_state_name()
-
 	dump['memory'] = {
 		'static': Performance.get_monitor(Performance.MEMORY_STATIC),
 		'static_max': Performance.get_monitor(Performance.MEMORY_STATIC_MAX),
