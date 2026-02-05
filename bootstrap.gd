@@ -6,7 +6,7 @@ extends EditorPlugin
 
 const PLUGIN_NAME = "godot_common"
 
-const sub_plugins = ["utility"]
+const sub_plugins = []
 
 func _enable_plugin() -> void:
 	for plugin in sub_plugins:
