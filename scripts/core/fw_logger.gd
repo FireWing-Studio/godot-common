@@ -1,7 +1,6 @@
-@tool
 
 extends Node
-class_name GameLogger
+class_name FWLogger
 
 enum Level {DEBUG, INFO, WARN, ERROR}
 
