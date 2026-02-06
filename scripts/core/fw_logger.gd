@@ -10,6 +10,7 @@ static func level_name(level: Level):
 		return keys[level]
 	return 'LOG'
 
+
 const LOG_FILE_PATH = 'logs/app.log'
 const CRASH_DUMP_FILE_PATH = 'logs/crash_dump.json'
 
@@ -18,6 +19,7 @@ var log_to_file = true
 
 var _file: FileAccess
 
+
 func _ready() -> void:
 	if not OS.is_debug_build():
 		current_level = Level.WARN
@@ -25,6 +27,14 @@ func _ready() -> void:
 	
 	if log_to_file:
 		_file = FileAccess.open('user://' + LOG_FILE_PATH, FileAccess.WRITE)
+	
+	debug('Log', 'Initialized log')
+
+func _exit_tree() -> void:
+	if _file:
+		_file.flush()
+		_file.close()
+
 
 func debug(tag: String, message: String, data: Dictionary = {}) -> void:
 	_log(Level.DEBUG, tag, message, data)
@@ -56,6 +66,7 @@ func _log(level: Level, tag: String, message: String, data: Dictionary) -> void:
 	print(line)
 	if log_to_file:
 		_file.store_line(line)
+		_file.flush()
 
 func _dump_state() -> void:
 	var dump: Dictionary = {}
@@ -84,4 +95,5 @@ func _write_dump_file(data: Dictionary) -> void:
 	var file = FileAccess.open(path, FileAccess.WRITE)
 	if file:
 		file.store_string(JSON.stringify(data, "\t"))
+		file.flush()
 		file.close()
