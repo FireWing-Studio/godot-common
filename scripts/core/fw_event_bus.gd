@@ -5,44 +5,56 @@ class_name FWEventBus
 var _log: FWLogger
 var _events: Dictionary[StringName, Array] = {}
 
-func _fetch_log() -> FWLogger:
-	var root := get_tree().root
-	var node := root.get_node_or_null('Log')
-	if node is FWLogger:
-		return node as FWLogger
-	return null
-
-
 func _ready() -> void:
-	_log = _fetch_log()
+	_log = FWMethods.fetch_log(self)
 
 
 func subscribe(event_name: StringName, callback: Callable) -> void:
 	if callback.get_argument_count() > 1:
 		if _log:
-			_log.warn('Bus.subscribe', 'Invalid signature of [%s]: too many arguments [%d]' % [event_name, callback.get_argument_count()])
+			_log.warn(
+				'Bus.subscribe',
+				'Invalid signature of event: too many arguments',
+				{'event': event_name, 'arguments': callback.get_argument_count()}
+			)
 		return
 	
 	if not event_name in _events:
 		if _log:
-			_log.info('Bus.subscribe', 'Event [%s] was not present: the event will be initialized' % [event_name])
+			_log.info(
+				'Bus.subscribe',
+				'Event not present yet: the event will be initialized',
+				{'event': event_name}
+			)
 		_events[event_name] = []
 	
 	if not callback in _events[event_name]:
 		_events[event_name].append(callback)
 	else:
 		if _log:
-			_log.warn('Bus.subscribe', 'Callback [%s] already present in event [%s]' % [callback, event_name])
+			_log.warn(
+				'Bus.subscribe',
+				'Callback already present in event',
+				{'callback': callback, 'event': event_name}
+			)
 
 func unsubscribe(event_name: StringName, callback: Callable) -> void:
 	if not event_name in _events:
 		if _log:
-			_log.warn('Bus.unsubscribe', 'Event [%s] not present' % [event_name])
+			_log.warn(
+				'Bus.unsubscribe',
+				'Event not present',
+				{'event': event_name}
+			)
 		return
 	
 	if not callback in _events[event_name]:
 		if _log:
-			_log.warn('Bus.unsubscribe', 'Callback [%s] not present in event [%s]' % [callback, event_name])
+			_log.warn(
+				'Bus.unsubscribe',
+				'Callback not present in event',
+				{'callback': callback, 'event': event_name}
+			)
 		return
 	
 	_events[event_name].erase(callback)
@@ -52,7 +64,11 @@ func unsubscribe(event_name: StringName, callback: Callable) -> void:
 func emit(event_name: StringName, data: Dictionary = {}) -> void:
 	if not event_name in _events:
 		if _log:
-			_log.info('Bus.emit', 'Event [%s] has no listeners' % [event_name])
+			_log.info(
+				'Bus.emit',
+				'Event has no listeners',
+				{'event': event_name}
+			)
 		return
 	
 	var callbacks: Array = _events[event_name].duplicate()
@@ -64,11 +80,19 @@ func emit(event_name: StringName, data: Dictionary = {}) -> void:
 				1: callback.call(data)
 				_:
 					if _log:
-						_log.warn('Bus.emit', 'Invalid signature of [%s]: too many arguments' % [event_name])
+						_log.warn(
+							'Bus.emit',
+							'Invalid signature of event: too many arguments',
+							{'event': event_name, 'arguments': callback.get_argument_count()}
+						)
 					_events[event_name].erase(callback)
 		else:
 			if _log:
-				_log.warn('Bus.emit', 'Invalid callback removed from event [%s]' % [event_name])
+				_log.warn(
+					'Bus.emit',
+					'Invalid callback removed from event',
+					{'event': event_name, 'callback': callback}
+				)
 			_events[event_name].erase(callback)
 	
 	if _events[event_name].is_empty():
