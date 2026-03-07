@@ -21,15 +21,16 @@ const CRASH_DUMP_FILE_NAME = 'crash_dump-%d.json'
 
 const FLUSH_THRESHOLD = 4096
 const LOGS_STORED = 50
-const FLUSH_TIMEOUT = 1000
+const FLUSH_TIMEOUT = 1000.0
 
 var log_to_file = true
 var skip_minor_levels = false
 
 var _recent_logs: Array[String] = []
 var _file: FileAccess
-var _flush_count: int = 0
+var _buffer_flush_count: int = 0
 var _flush_timer: Timer
+var _times_flushed: int = 0
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -45,7 +46,7 @@ func _ready() -> void:
 	debug('Log', 'Initialized log', booton_data)
 	
 	_flush_timer = Timer.new()
-	_flush_timer.wait_time = 1.0
+	_flush_timer.wait_time = FLUSH_TIMEOUT / 1000.0
 	_flush_timer.one_shot = false
 	_flush_timer.autostart = true
 	_flush_timer.timeout.connect(_flush)
@@ -81,8 +82,8 @@ func _flush():
 	if _file:
 		_file.flush()
 	
-	_flush_count = 0
-	
+	_times_flushed += 1
+	_buffer_flush_count = 0
 	_flush_timer.stop()
 	_flush_timer.start()
 
@@ -118,9 +119,9 @@ func _log(level: Level, caller: StringName, message: String, data: Dictionary) -
 				log_to_file = false
 		if log_to_file:
 			_file.store_line(line)
-			_flush_count += line.length() + 1	# The +1 is the newline
+			_buffer_flush_count += line.length() + 1	# The +1 is the newline
 			
-			if _flush_count >= 4096 or level in URGENT_LEVELS:
+			if _buffer_flush_count >= 4096 or level in URGENT_LEVELS:
 				_flush()
 	
 	_recent_logs.push_back(line)
