@@ -21,6 +21,7 @@ const CRASH_DUMP_FILE_NAME = 'crash_dump-%d.json'
 
 const FLUSH_THRESHOLD = 4096
 const LOGS_STORED = 50
+const FLUSH_TIMEOUT = 1000
 
 var log_to_file = true
 var skip_minor_levels = false
@@ -28,8 +29,11 @@ var skip_minor_levels = false
 var _recent_logs: Array[String] = []
 var _file: FileAccess
 var _flush_count: int = 0
+var _flush_timer: Timer
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	
 	if not OS.is_debug_build():
 		skip_minor_levels = true
 		log_to_file = true
@@ -39,6 +43,13 @@ func _ready() -> void:
 		"plugin_version": FWMethods.get_version()
 	}
 	debug('Log', 'Initialized log', booton_data)
+	
+	_flush_timer = Timer.new()
+	_flush_timer.wait_time = 1.0
+	_flush_timer.one_shot = false
+	_flush_timer.autostart = true
+	_flush_timer.timeout.connect(_flush)
+	add_child(_flush_timer)
 
 func _exit_tree() -> void:
 	_force_flush_all()
@@ -48,22 +59,32 @@ func _notification(what):
 		_force_flush_all()
 
 
-func debug(caller: String, message: String, data: Dictionary = {}) -> void:
+func debug(caller: StringName, message: String, data: Dictionary = {}) -> void:
 	_log(Level.DEBUG, caller, message, data)
 
-func info(caller: String, message: String, data: Dictionary = {}) -> void:
+func info(caller: StringName, message: String, data: Dictionary = {}) -> void:
 	_log(Level.INFO, caller, message, data)
 
-func warn(caller: String, message: String, data: Dictionary = {}) -> void:
+func warn(caller: StringName, message: String, data: Dictionary = {}) -> void:
 	_log(Level.WARN, caller, message, data)
 
-func error(caller: String, message: String, data: Dictionary = {}) -> void:
+func error(caller: StringName, message: String, data: Dictionary = {}) -> void:
 	_log(Level.ERROR, caller, message, data)
 
-func panic(caller: String, message: String, data: Dictionary = {}) -> void:
+func panic(caller: StringName, message: String, data: Dictionary = {}) -> void:
 	_log(Level.PANIC, caller, message, data)
 	_dump_state(message)
 
+
+func _flush():
+	#debug('Log', 'Flushed')
+	if _file:
+		_file.flush()
+	
+	_flush_count = 0
+	
+	_flush_timer.stop()
+	_flush_timer.start()
 
 func _load_log_file() -> FileAccess:
 	var dir = DirAccess.open('user://')
@@ -77,7 +98,7 @@ func _load_log_file() -> FileAccess:
 	
 	return FileAccess.open('user://' + LOG_FILE_DIR + LOG_FILE_NAME, FileAccess.WRITE)
 
-func _log(level: Level, caller: String, message: String, data: Dictionary) -> void:
+func _log(level: Level, caller: StringName, message: String, data: Dictionary) -> void:
 	if skip_minor_levels and level in MINOR_LEVELS:
 		return
 	
@@ -100,8 +121,7 @@ func _log(level: Level, caller: String, message: String, data: Dictionary) -> vo
 			_flush_count += line.length() + 1	# The +1 is the newline
 			
 			if _flush_count >= 4096 or level in URGENT_LEVELS:
-				_file.flush()
-				_flush_count = 0
+				_flush()
 	
 	_recent_logs.push_back(line)
 	if _recent_logs.size() > LOGS_STORED:
