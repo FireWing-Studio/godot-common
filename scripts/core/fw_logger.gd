@@ -21,7 +21,7 @@ const CRASH_DUMP_FILE_NAME = 'crash_dump-%d.json'
 
 const FLUSH_THRESHOLD = 4096
 const LOGS_STORED = 50
-const FLUSH_TIMEOUT = 1000.0
+const FLUSH_TIMEOUT = 1.0
 
 var log_to_file = true
 var skip_minor_levels = false
@@ -46,7 +46,7 @@ func _ready() -> void:
 	debug('Log', 'Initialized log', booton_data)
 	
 	_flush_timer = Timer.new()
-	_flush_timer.wait_time = FLUSH_TIMEOUT / 1000.0
+	_flush_timer.wait_time = FLUSH_TIMEOUT
 	_flush_timer.one_shot = false
 	_flush_timer.autostart = true
 	_flush_timer.timeout.connect(_flush)
