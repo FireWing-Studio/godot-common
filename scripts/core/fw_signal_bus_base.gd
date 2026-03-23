@@ -96,6 +96,10 @@ func _log_connection_diff(signal_name: StringName, raw_connections: Array[Callab
 			removed.append(cached_connections[i_cache])
 			i_cache += 1
 	
+	while i_cache < cache_size:
+		removed.append(cached_connections[i_cache])
+		i_cache += 1
+	
 	while i_raw < raw_size:
 		added.append(raw_connections[i_raw])
 		i_raw += 1
