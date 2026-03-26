@@ -12,11 +12,18 @@ enum SaveError {
 }
 
 enum SaveEncoding {
-	BINARY = 0, 
-	JSON = 1
+	INVALID = 0,
+	BINARY = 1, 
+	JSON = 2,
+	BINARY_ZSTD = 3
 }
 
+class Encoded:
+	var payload: PackedByteArray
+	var uncompressed_size: int
+
 const BASE_DIR = 'user://saves/'
+const MAGIC_NUMBER: String = "FWSV"
 
 const FILE_EXTENSION = '.sav'
 const FILE_NEW_EXTENSION = '.new'
@@ -34,13 +41,23 @@ func _init(prefix_relative_dir: String = '') -> void:
 		self.prefix_dir = BASE_DIR
 
 
-func _encode_payload(payload: Dictionary, encoding: SaveEncoding) -> PackedByteArray:
+func _encode_payload(payload: Dictionary, encoding: SaveEncoding) -> Encoded:
+	var result: Encoded = Encoded.new()
 	match encoding:
 		SaveEncoding.BINARY:
-			return var_to_bytes(payload)
+			result.payload = var_to_bytes(payload)
+			result.uncompressed_size = result.payload.size()
 		SaveEncoding.JSON:
-			return JSON.stringify(payload).to_utf8_buffer()
-	return PackedByteArray()
+			result.payload = JSON.stringify(payload).to_utf8_buffer()
+			result.uncompressed_size = result.payload.size()
+		SaveEncoding.BINARY_ZSTD:
+			result.payload = var_to_bytes(payload)
+			result.uncompressed_size = result.payload.size()
+			result.payload = result.payload.compress(FileAccess.CompressionMode.COMPRESSION_ZSTD)
+		_:
+			result.payload = PackedByteArray()
+			result.uncompressed_size = 0
+	return result
 
 func _ensure_dir(dir: String) -> SaveError:
 	if not DirAccess.dir_exists_absolute(dir):
@@ -50,25 +67,29 @@ func _ensure_dir(dir: String) -> SaveError:
 	return SaveError.OK
 
 func _write_file(path: String, encoding: SaveEncoding, payload: Dictionary) -> SaveError:
-	var encoded_payload: PackedByteArray = _encode_payload(payload, encoding)
-	
-	var header_stream: StreamPeerBuffer = StreamPeerBuffer.new()
-	header_stream.put_u32(0x46575356)	# MAGIC (FWSV)
-	header_stream.put_u16(VERSION)		# VERSION
-	header_stream.put_u8(encoding)		# ENCODING
-	header_stream.put_u8(0)				# PADDING (0x00)
+	var encoded: Encoded = _encode_payload(payload, encoding)
 	
 	var ctx: HashingContext = HashingContext.new()
 	ctx.start(HashingContext.HASH_MD5)
-	ctx.update(header_stream.data_array.slice(0, 8))
-	var header_checksum: PackedByteArray = ctx.finish().slice(0, 8)
-	
-	ctx.start(HashingContext.HASH_MD5)
-	ctx.update(encoded_payload)
+	ctx.update(encoded.payload)
 	var payload_checksum: PackedByteArray = ctx.finish()
 	
-	header_stream.put_data(header_checksum)
-	header_stream.put_data(payload_checksum)
+	var header_stream: StreamPeerBuffer = StreamPeerBuffer.new()
+	header_stream.resize(64)
+	header_stream.put_data(MAGIC_NUMBER.to_ascii_buffer())	# MAGIC NUMBER
+	header_stream.put_u16(VERSION)							# HEADER VERSION
+	header_stream.put_u8(encoding)							# ENCODING
+	header_stream.put_u8(0)									# PADDING (0x00)
+	header_stream.put_u32(encoded.payload.size())			# COMPRESSED PAYLOAD SIZE
+	header_stream.put_u32(encoded.uncompressed_size)		# UNCOMPRESSED PAYLOAD SIZE
+	header_stream.seek(32)
+	header_stream.put_data(payload_checksum)				# PAYLOAD CHECKSUM
+	
+	ctx.start(HashingContext.HASH_MD5)
+	ctx.update(header_stream.data_array.slice(0, 48))
+	var header_checksum: PackedByteArray = ctx.finish()
+	
+	header_stream.put_data(header_checksum)					# HEADER CHECKSUM
 	
 	var header: PackedByteArray = header_stream.data_array
 	
@@ -76,7 +97,7 @@ func _write_file(path: String, encoding: SaveEncoding, payload: Dictionary) -> S
 	if not file:
 		return SaveError.FILE_ACCESS_ERROR
 	file.store_buffer(header)
-	file.store_buffer(encoded_payload)
+	file.store_buffer(encoded.payload)
 	file.close()
 	
 	return SaveError.OK
