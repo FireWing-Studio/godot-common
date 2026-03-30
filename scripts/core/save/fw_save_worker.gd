@@ -8,14 +8,12 @@ enum SaveError {
 	NAME_NOT_PRESENT,
 	FILE_ACCESS_ERROR,
 	FILE_RENAME_ERROR,
-	FILE_REMOVE_ERROR
-}
-
-enum SaveEncoding {
-	INVALID = 0,
-	BINARY = 1, 
-	JSON = 2,
-	BINARY_ZSTD = 3
+	FILE_REMOVE_ERROR,
+	INVALID_HEADER_SIZE,
+	INVALID_MAGIC_NUMBER,
+	INVALID_HEADER_VERSION,
+	INVALID_PAYLOAD_CHECKSUM,
+	INVALID_HEADER_CHECKSUM
 }
 
 class Encoded:
@@ -23,15 +21,12 @@ class Encoded:
 	var uncompressed_size: int
 
 const BASE_DIR = 'user://saves/'
-const MAGIC_NUMBER: String = "FWSV"
 
 const FILE_EXTENSION = '.sav'
 const FILE_NEW_EXTENSION = '.new'
 const FILE_OLD_EXTENSION = '.old'
 const DIR_NEW_SUFFIX = '_NEW'
 const DIR_OLD_SUFFIX = '_OLD'
-
-const VERSION: int = 1
 
 var prefix_dir: String
 
@@ -41,24 +36,6 @@ func _init(prefix_relative_dir: String = '') -> void:
 		self.prefix_dir = BASE_DIR
 
 
-func _encode_payload(payload: Dictionary, encoding: SaveEncoding) -> Encoded:
-	var result: Encoded = Encoded.new()
-	match encoding:
-		SaveEncoding.BINARY:
-			result.payload = var_to_bytes(payload)
-			result.uncompressed_size = result.payload.size()
-		SaveEncoding.JSON:
-			result.payload = JSON.stringify(payload).to_utf8_buffer()
-			result.uncompressed_size = result.payload.size()
-		SaveEncoding.BINARY_ZSTD:
-			result.payload = var_to_bytes(payload)
-			result.uncompressed_size = result.payload.size()
-			result.payload = result.payload.compress(FileAccess.CompressionMode.COMPRESSION_ZSTD)
-		_:
-			result.payload = PackedByteArray()
-			result.uncompressed_size = 0
-	return result
-
 func _ensure_dir(dir: String) -> SaveError:
 	if not DirAccess.dir_exists_absolute(dir):
 		var dir_err: Error = DirAccess.make_dir_recursive_absolute(dir)
@@ -66,43 +43,26 @@ func _ensure_dir(dir: String) -> SaveError:
 			return SaveError.COULD_NOT_CREATE_DIR
 	return SaveError.OK
 
-func _write_file(path: String, encoding: SaveEncoding, payload: Dictionary) -> SaveError:
-	var encoded: Encoded = _encode_payload(payload, encoding)
+func _write_file(path: String, encoding: FWSavePayload.SaveEncoding, payload: Dictionary) -> SaveError:
+	var save_payload: FWSavePayload = FWSavePayload.new()
+	save_payload.encoding = encoding
+	save_payload.encode(payload)
+	var save_validator: FWSaveValidator = FWSaveValidator.new()
+	save_validator.save_payload = save_payload
 	
-	var ctx: HashingContext = HashingContext.new()
-	ctx.start(HashingContext.HASH_MD5)
-	ctx.update(encoded.payload)
-	var payload_checksum: PackedByteArray = ctx.finish()
-	
-	var header_stream: StreamPeerBuffer = StreamPeerBuffer.new()
-	header_stream.resize(64)
-	header_stream.put_data(MAGIC_NUMBER.to_ascii_buffer())	# MAGIC NUMBER
-	header_stream.put_u16(VERSION)							# HEADER VERSION
-	header_stream.put_u8(encoding)							# ENCODING
-	header_stream.put_u8(0)									# PADDING (0x00)
-	header_stream.put_u32(encoded.payload.size())			# COMPRESSED PAYLOAD SIZE
-	header_stream.put_u32(encoded.uncompressed_size)		# UNCOMPRESSED PAYLOAD SIZE
-	header_stream.seek(32)
-	header_stream.put_data(payload_checksum)				# PAYLOAD CHECKSUM
-	
-	ctx.start(HashingContext.HASH_MD5)
-	ctx.update(header_stream.data_array.slice(0, 48))
-	var header_checksum: PackedByteArray = ctx.finish()
-	
-	header_stream.put_data(header_checksum)					# HEADER CHECKSUM
-	
-	var header: PackedByteArray = header_stream.data_array
+	var header = save_validator.generate_header(FWSaveValidator.CURR_HEADER_VERSION)
 	
 	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
 	if not file:
 		return SaveError.FILE_ACCESS_ERROR
 	file.store_buffer(header)
-	file.store_buffer(encoded.payload)
+	file.store_buffer(save_payload.encoded_payload)
 	file.close()
 	
 	return SaveError.OK
 
-func _write_atomic_file(dir: String, name: String, encoding: SaveEncoding, payload: Dictionary) -> SaveError:
+
+func _write_atomic_file(dir: String, name: String, encoding: FWSavePayload.SaveEncoding, payload: Dictionary) -> SaveError:
 	_ensure_dir(dir)
 	var base_path: String = dir.path_join(name) + FILE_EXTENSION
 	var new_path: String = base_path + FILE_NEW_EXTENSION
@@ -128,7 +88,7 @@ func _write_atomic_file(dir: String, name: String, encoding: SaveEncoding, paylo
 	
 	return SaveError.OK
 
-func save(payload: Dictionary, relative_dir: String = './', encoding: SaveEncoding = SaveEncoding.BINARY) -> SaveError:
+func save(payload: Dictionary, relative_dir: String = './', encoding: FWSavePayload.SaveEncoding = FWSavePayload.SaveEncoding.BINARY) -> SaveError:
 	var dir: String = prefix_dir.path_join(relative_dir).simplify_path()
 	if not dir.is_absolute_path():
 		return SaveError.INVALID_DIR
