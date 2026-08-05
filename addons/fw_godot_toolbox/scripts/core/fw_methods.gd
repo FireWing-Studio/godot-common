@@ -5,7 +5,7 @@ class_name FWMethods
 
 static func get_version() -> String:
 	var config: ConfigFile = ConfigFile.new()
-	var err = config.load('res://addons/godot_common/plugin.cfg')
+	var err = config.load('res://addons/fw_godot_toolbox/plugin.cfg')
 	
 	if err == OK:
 		return config.get_value("plugin", "version", "0.0.0")
