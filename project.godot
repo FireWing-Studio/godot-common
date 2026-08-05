@@ -14,6 +14,10 @@ config/name="FireWing Godot Toolbox"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
 
+[autoload]
+
+Log="*uid://b3e0kpd8s6yrp"
+
 [display]
 
 window/stretch/mode="canvas_items"
@@ -21,7 +25,7 @@ window/stretch/aspect="expand"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/fw-godot-toolbox/plugin.cfg")
+enabled=PackedStringArray("res://addons/fw-godot-toolbox/plugin.cfg", "res://addons/fw_godot_toolbox/plugin.cfg")
 
 [physics]
 
